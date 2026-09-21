@@ -111,3 +111,124 @@ def test_close_llm_client(
 
     # Assert
     llm_client.close.assert_awaited_once_with()
+
+
+def test_stream_recommendation_returns_chunks(
+    travel_service: TravelAssistantService,
+    llm_client: MagicMock,
+) -> None:
+    # Arrange
+    async def fake_stream():
+        yield SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    delta=SimpleNamespace(content="Посетите")
+                )
+            ]
+        )
+        yield SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    delta=SimpleNamespace(content=" Victoria Peak")
+                )
+            ]
+        )
+
+    llm_client.chat.completions.create.return_value = fake_stream()
+
+    async def collect_chunks() -> list[str]:
+        chunks = []
+
+        async for chunk in travel_service.get_stream_recommendation(
+            "Что посмотреть в Гонконге?"
+        ):
+            chunks.append(chunk)
+
+        return chunks
+
+    # Act
+    chunks = asyncio.run(collect_chunks())
+
+    # Assert
+    assert chunks == [
+        "Посетите",
+        " Victoria Peak",
+    ]
+    llm_client.chat.completions.create.assert_awaited_once()
+
+def test_stream_recommendation_skips_empty_chunks(
+    travel_service: TravelAssistantService,
+    llm_client: MagicMock,
+) -> None:
+    # Arrange
+    async def fake_stream():
+        yield SimpleNamespace(
+            choices=[]
+        )
+        yield SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    delta=SimpleNamespace(content=None)
+                )
+            ]
+        )
+        yield SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    delta=SimpleNamespace(content="")
+                )
+            ]
+        )
+        yield SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    delta=SimpleNamespace(content="Victoria Peak")
+                )
+            ]
+        )
+
+    llm_client.chat.completions.create.return_value = fake_stream()
+
+    async def collect_chunks() -> list[str]:
+        chunks = []
+
+        async for chunk in travel_service.get_stream_recommendation(
+            "Что посмотреть в Гонконге?"
+        ):
+            chunks.append(chunk)
+
+        return chunks
+
+    # Act
+    chunks = asyncio.run(collect_chunks())
+
+    # Assert
+    assert chunks == ["Victoria Peak"]
+
+
+def test_stream_recommendation_wraps_api_error(
+    travel_service: TravelAssistantService,
+    llm_client: MagicMock,
+) -> None:
+    # Arrange
+    api_error = APIError(
+        message="Service unavailable",
+        request=Request(
+            "POST",
+            "https://api.groq.com/openai/v1/chat/completions",
+        ),
+        body=None,
+    )
+    llm_client.chat.completions.create.side_effect = api_error
+
+    async def consume_stream() -> None:
+        async for _ in travel_service.get_stream_recommendation(
+            "Что посмотреть в Гонконге?"
+        ):
+            pass
+
+    # Act & Assert
+    with pytest.raises(LLMRequestError) as exc_info:
+        asyncio.run(consume_stream())
+
+    assert exc_info.value.__cause__ is api_error

@@ -1,7 +1,11 @@
-from openai import AsyncOpenAI, APIError
+from collections.abc import AsyncIterator
+from typing import cast
+
+from openai import AsyncOpenAI, APIError, AsyncStream
 from openai.types.chat import (
     ChatCompletionSystemMessageParam,
     ChatCompletionUserMessageParam,
+    ChatCompletionChunk
 )
 
 from app.core.config import settings
@@ -49,3 +53,34 @@ class TravelAssistantService:
 
     async def close(self) -> None:
         await self._client.close()
+
+    async def get_stream_recommendation(self, query: str) -> AsyncIterator[str]:
+        try:
+            stream = cast(
+                AsyncStream[ChatCompletionChunk],
+                await self._client.chat.completions.create(
+                    model=self._model,
+                    messages=[
+                        ChatCompletionSystemMessageParam(
+                            role="system",
+                            content=TRAVEL_SYSTEM_PROMPT,
+                        ),
+                        ChatCompletionUserMessageParam(
+                            role="user",
+                            content=query,
+                        ),
+                    ],
+                    stream=True,
+                ),
+            )
+        except APIError as error:
+            raise LLMRequestError() from error
+
+        async for chunk in stream:
+            if not chunk.choices:
+                continue
+
+            content = chunk.choices[0].delta.content
+
+            if content:
+                yield content
