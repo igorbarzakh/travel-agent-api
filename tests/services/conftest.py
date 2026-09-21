@@ -8,9 +8,7 @@ from app.services.travel_assistant import TravelAssistantService
 
 @pytest.fixture
 def llm_client() -> Iterator[MagicMock]:
-    with patch(
-        "app.services.travel_assistant.AsyncOpenAI"
-    ) as client_factory:
+    with patch("app.services.travel_assistant.AsyncOpenAI") as client_factory:
         client = client_factory.return_value
         client.chat.completions.create = AsyncMock()
         client.close = AsyncMock()

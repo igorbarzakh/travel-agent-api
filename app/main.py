@@ -20,12 +20,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await service.close()
 
 
-
 app = FastAPI(
-    title="Travel Agent API",
-    description="API туристического AI-ассистента",
+    title="AI Travel Assistant API",
+    description="AI-powered travel assistant API",
     version="0.0.1",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 app.include_router(recommendations_router)

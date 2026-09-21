@@ -57,9 +57,8 @@ def test_get_recommendation_rejects_empty_content(
 
     # Act & Assert
     with pytest.raises(EmptyLLMResponseError):
-        asyncio.run(
-            travel_service.get_recommendation("Что посмотреть в Гонконге?")
-        )
+        asyncio.run(travel_service.get_recommendation("Что посмотреть в Гонконге?"))
+
 
 def test_get_recommendation_rejects_empty_choices(
     travel_service: TravelAssistantService,
@@ -72,9 +71,8 @@ def test_get_recommendation_rejects_empty_choices(
 
     # Act & Assert
     with pytest.raises(EmptyLLMResponseError):
-        asyncio.run(
-            travel_service.get_recommendation("Что посмотреть в Гонконге?")
-        )
+        asyncio.run(travel_service.get_recommendation("Что посмотреть в Гонконге?"))
+
 
 def test_get_recommendation_wraps_api_error(
     travel_service: TravelAssistantService,
@@ -93,11 +91,10 @@ def test_get_recommendation_wraps_api_error(
 
     # Act & Assert
     with pytest.raises(LLMRequestError) as exc_info:
-        asyncio.run(
-            travel_service.get_recommendation("Что посмотреть в Гонконге?")
-        )
+        asyncio.run(travel_service.get_recommendation("Что посмотреть в Гонконге?"))
 
     assert exc_info.value.__cause__ is api_error
+
 
 def test_close_llm_client(
     travel_service: TravelAssistantService,
@@ -120,18 +117,10 @@ def test_stream_recommendation_returns_chunks(
     # Arrange
     async def fake_stream():
         yield SimpleNamespace(
-            choices=[
-                SimpleNamespace(
-                    delta=SimpleNamespace(content="Посетите")
-                )
-            ]
+            choices=[SimpleNamespace(delta=SimpleNamespace(content="Посетите"))]
         )
         yield SimpleNamespace(
-            choices=[
-                SimpleNamespace(
-                    delta=SimpleNamespace(content=" Victoria Peak")
-                )
-            ]
+            choices=[SimpleNamespace(delta=SimpleNamespace(content=" Victoria Peak"))]
         )
 
     llm_client.chat.completions.create.return_value = fake_stream()
@@ -156,35 +145,22 @@ def test_stream_recommendation_returns_chunks(
     ]
     llm_client.chat.completions.create.assert_awaited_once()
 
+
 def test_stream_recommendation_skips_empty_chunks(
     travel_service: TravelAssistantService,
     llm_client: MagicMock,
 ) -> None:
     # Arrange
     async def fake_stream():
+        yield SimpleNamespace(choices=[])
         yield SimpleNamespace(
-            choices=[]
+            choices=[SimpleNamespace(delta=SimpleNamespace(content=None))]
         )
         yield SimpleNamespace(
-            choices=[
-                SimpleNamespace(
-                    delta=SimpleNamespace(content=None)
-                )
-            ]
+            choices=[SimpleNamespace(delta=SimpleNamespace(content=""))]
         )
         yield SimpleNamespace(
-            choices=[
-                SimpleNamespace(
-                    delta=SimpleNamespace(content="")
-                )
-            ]
-        )
-        yield SimpleNamespace(
-            choices=[
-                SimpleNamespace(
-                    delta=SimpleNamespace(content="Victoria Peak")
-                )
-            ]
+            choices=[SimpleNamespace(delta=SimpleNamespace(content="Victoria Peak"))]
         )
 
     llm_client.chat.completions.create.return_value = fake_stream()

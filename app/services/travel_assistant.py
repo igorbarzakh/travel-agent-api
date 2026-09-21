@@ -5,7 +5,7 @@ from openai import AsyncOpenAI, APIError, AsyncStream
 from openai.types.chat import (
     ChatCompletionSystemMessageParam,
     ChatCompletionUserMessageParam,
-    ChatCompletionChunk
+    ChatCompletionChunk,
 )
 
 from app.core.config import settings
@@ -15,41 +15,40 @@ from app.core.exceptions import EmptyLLMResponseError, LLMRequestError
 
 class TravelAssistantService:
     def __init__(self):
-       self._client = AsyncOpenAI(
-           base_url=settings.groq_url,
-           api_key=settings.groq_api_key,
-       )
-       self._model = settings.groq_model
+        self._client = AsyncOpenAI(
+            base_url=settings.groq_url,
+            api_key=settings.groq_api_key,
+        )
+        self._model = settings.groq_model
 
     async def get_recommendation(self, query: str) -> str:
-       try:
-           completion = await self._client.chat.completions.create(
-               model=self._model,
-               messages=[
-                   ChatCompletionSystemMessageParam(
-                       role="system",
-                       content=TRAVEL_SYSTEM_PROMPT,
-                   ),
-                   ChatCompletionUserMessageParam(
-                       role="user",
-                       content=query,
-                   ),
-               ]
-           )
+        try:
+            completion = await self._client.chat.completions.create(
+                model=self._model,
+                messages=[
+                    ChatCompletionSystemMessageParam(
+                        role="system",
+                        content=TRAVEL_SYSTEM_PROMPT,
+                    ),
+                    ChatCompletionUserMessageParam(
+                        role="user",
+                        content=query,
+                    ),
+                ],
+            )
 
-       except APIError as error:
-           raise LLMRequestError() from error
+        except APIError as error:
+            raise LLMRequestError() from error
 
-       if not completion.choices:
-           raise EmptyLLMResponseError()
+        if not completion.choices:
+            raise EmptyLLMResponseError()
 
-       content = completion.choices[0].message.content
+        content = completion.choices[0].message.content
 
-       if content is None or not content.strip():
-           raise EmptyLLMResponseError()
+        if content is None or not content.strip():
+            raise EmptyLLMResponseError()
 
-       return content.strip()
-
+        return content.strip()
 
     async def close(self) -> None:
         await self._client.close()
@@ -76,6 +75,8 @@ class TravelAssistantService:
         except APIError as error:
             raise LLMRequestError() from error
 
+        has_content = False
+
         async for chunk in stream:
             if not chunk.choices:
                 continue
@@ -83,4 +84,10 @@ class TravelAssistantService:
             content = chunk.choices[0].delta.content
 
             if content:
+                if content.strip():
+                    has_content = True
+
                 yield content
+
+        if not has_content:
+            raise EmptyLLMResponseError()

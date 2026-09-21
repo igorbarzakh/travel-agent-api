@@ -13,3 +13,7 @@ class RecommendationRequest(BaseModel):
 
 class RecommendationResponse(BaseModel):
     answer: str
+
+
+class StreamRecommendationMessage(BaseModel):
+    text: str

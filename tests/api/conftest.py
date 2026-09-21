@@ -18,9 +18,7 @@ def travel_service_mock() -> AsyncMock:
 def client(
     travel_service_mock: AsyncMock,
 ) -> Iterator[TestClient]:
-    app.dependency_overrides[get_travel_service] = (
-        lambda: travel_service_mock
-    )
+    app.dependency_overrides[get_travel_service] = lambda: travel_service_mock
 
     with TestClient(app) as test_client:
         yield test_client
