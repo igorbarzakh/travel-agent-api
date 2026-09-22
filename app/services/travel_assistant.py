@@ -9,6 +9,7 @@ from openai.types.responses import (
 
 from app.core.config import settings
 from app.core.exceptions import EmptyLLMResponseError, LLMRequestError
+from app.schemas.chat import ChatMessage
 from app.core.prompts import TRAVEL_SYSTEM_PROMPT
 
 
@@ -20,12 +21,19 @@ class TravelAssistantService:
         )
         self._model = settings.groq_model
 
-    async def get_recommendation(self, query: str) -> str:
+    async def get_recommendation(
+        self,
+        query: str,
+        history: list[ChatMessage],
+    ) -> str:
         try:
+            input_messages = [message.model_dump() for message in history]
+            input_messages.append({"role": "user", "content": query})
+
             response = await self._client.responses.create(
                 model=self._model,
                 instructions=TRAVEL_SYSTEM_PROMPT,
-                input=query,
+                input=input_messages,
             )
         except APIError as error:
             raise LLMRequestError() from error
@@ -37,14 +45,21 @@ class TravelAssistantService:
 
         return content.strip()
 
-    async def get_stream_recommendation(self, query: str) -> AsyncIterator[str]:
+    async def get_stream_recommendation(
+        self,
+        query: str,
+        history: list[ChatMessage],
+    ) -> AsyncIterator[str]:
         try:
+            input_messages = [message.model_dump() for message in history]
+            input_messages.append({"role": "user", "content": query})
+
             stream = cast(
                 AsyncStream[ResponseStreamEvent],
                 await self._client.responses.create(
                     model=self._model,
                     instructions=TRAVEL_SYSTEM_PROMPT,
-                    input=query,
+                    input=input_messages,
                     stream=True,
                 ),
             )

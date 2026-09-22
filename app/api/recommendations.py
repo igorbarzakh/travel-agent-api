@@ -45,7 +45,7 @@ async def get_recommendation(
     service: TravelAssistantService = Depends(get_travel_service),
 ) -> RecommendationResponse:
     try:
-        answer = await service.get_recommendation(request.query)
+        answer = await service.get_recommendation(request.query, request.history)
     except (EmptyLLMResponseError, LLMRequestError) as error:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -66,7 +66,9 @@ async def get_stream_recommendation(
 ) -> StreamingResponse:
     async def generate() -> AsyncIterator[str]:
         try:
-            async for chunk in service.get_stream_recommendation(request.query):
+            async for chunk in service.get_stream_recommendation(
+                request.query, request.history
+            ):
                 message = StreamRecommendationMessage(text=chunk)
                 yield f"event: message\ndata: {message.model_dump_json()}\n\n"
         except (EmptyLLMResponseError, LLMRequestError) as error:

@@ -30,7 +30,7 @@ def test_get_recommendation_returns_success(
     assert response.json() == {
         "answer": answer,
     }
-    travel_service_mock.get_recommendation.assert_awaited_once_with(query)
+    travel_service_mock.get_recommendation.assert_awaited_once_with(query, [])
 
 
 def test_get_recommendation_rejects_empty_query(
@@ -121,6 +121,10 @@ def test_stream_recommendation_returns_sse_events(
         "event: done\n"
         "data: {}\n\n"
     )
+    travel_service_mock.get_stream_recommendation.assert_called_once_with(
+        "Что посмотреть в Гонконге?",
+        [],
+    )
 
 
 def test_stream_recommendation_returns_error_event(
@@ -210,3 +214,131 @@ def test_stream_recommendation_returns_empty_response_error_event(
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/event-stream")
     assert response.text == f"event: error\ndata: {error_data.model_dump_json()}\n\n"
+
+
+def test_get_recommendendation_passes_history(
+    client: TestClient,
+    travel_service_mock: AsyncMock,
+) -> None:
+    # Arrange
+    history = [
+        {
+            "role": "user",
+            "content": "Что посмотреть в Гонконге?",
+        },
+        {
+            "role": "assistant",
+            "content": "Посетите Victoria Peak.",
+        },
+    ]
+    travel_service_mock.get_recommendation.return_value = (
+        "Он находится на острове Гонконг."
+    )
+
+    # Act
+    response = client.post(
+        "/recommendations",
+        json={
+            "query": "А где это находится?",
+            "history": history,
+        },
+    )
+
+    # Assert
+    assert response.status_code == 200
+
+    call_args = travel_service_mock.get_recommendation.call_args
+    assert call_args.args[0] == "А где это находится?"
+    assert [message.model_dump() for message in call_args.args[1]] == history
+
+
+def test_stream_recommendation_passes_history(
+    client: TestClient,
+    travel_service_mock: AsyncMock,
+) -> None:
+    # Arrange
+    history = [
+        {
+            "role": "user",
+            "content": "Что посмотреть в Гонконге?",
+        },
+        {
+            "role": "assistant",
+            "content": "Посетите Victoria Peak.",
+        },
+    ]
+
+    async def fake_stream():
+        yield "Он находится на острове Гонконг."
+
+    travel_service_mock.get_stream_recommendation.return_value = fake_stream()
+
+    # Act
+    response = client.post(
+        "/recommendations/stream",
+        json={
+            "query": "А где это находится?",
+            "history": history,
+        },
+    )
+
+    # Assert
+    assert response.status_code == 200
+
+    call_args = travel_service_mock.get_stream_recommendation.call_args
+    assert call_args.args[0] == "А где это находится?"
+    assert [message.model_dump() for message in call_args.args[1]] == history
+
+
+def test_get_recommendation_rejects_too_long_history(
+    client: TestClient,
+    travel_service_mock: AsyncMock,
+) -> None:
+    # Arrange
+    history = [
+        {
+            "role": "user",
+            "content": f"Message {index}",
+        }
+        for index in range(21)
+    ]
+
+    # Act
+    response = client.post(
+        "/recommendations",
+        json={
+            "query": "Что посмотреть в Гонконге?",
+            "history": history,
+        },
+    )
+
+    # Assert
+    assert response.status_code == 422
+    travel_service_mock.get_recommendation.assert_not_awaited()
+
+
+def test_stream_recommendation_rejects_too_long_history(
+    client: TestClient,
+    travel_service_mock: AsyncMock,
+) -> None:
+    # Arrange
+    history = [
+        {
+            "role": "user",
+            "content": f"Message {index}",
+        }
+        for index in range(21)
+    ]
+
+    # Act
+    response = client.post(
+        "/recommendations/stream",
+        json={
+            "query": "Что посмотреть в Гонконге?",
+            "history": history,
+        },
+    )
+
+    # Assert
+    assert response.status_code == 422
+    travel_service_mock.get_stream_recommendation.assert_not_called()
