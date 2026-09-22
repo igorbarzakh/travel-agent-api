@@ -3,10 +3,13 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.core.exception_handlers import internal_server_error_handler
+
 from app.services.travel_assistant import TravelAssistantService
 
 from app.api.recommendations import router as recommendations_router
 from app.api.health import router as health_router
+from app.api.auth import router as auth_router
 
 
 @asynccontextmanager
@@ -27,5 +30,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_exception_handler(
+    Exception,
+    internal_server_error_handler,
+)
+
+app.include_router(auth_router)
 app.include_router(recommendations_router)
 app.include_router(health_router)
