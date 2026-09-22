@@ -1,11 +1,13 @@
 import pytest
 import asyncio
 from httpx import Request
-from openai import APIError
-
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock
+
+from openai import APIError
+from openai.types.responses import ResponseTextDeltaEvent
+
 
 from app.services.travel_assistant import TravelAssistantService
 from app.core.exceptions import EmptyLLMResponseError, LLMRequestError
@@ -16,14 +18,8 @@ def test_get_recommendation_returns_trimmed_text(
     llm_client: MagicMock,
 ) -> None:
     # Arrange
-    llm_client.chat.completions.create.return_value = SimpleNamespace(
-        choices=[
-            SimpleNamespace(
-                message=SimpleNamespace(
-                    content="  Посетите набережную.  ",
-                ),
-            ),
-        ],
+    llm_client.responses.create.return_value = SimpleNamespace(
+        output_text="  Посетите набережную.  ",
     )
 
     # Act
@@ -33,7 +29,7 @@ def test_get_recommendation_returns_trimmed_text(
 
     # Assert
     assert answer == "Посетите набережную."
-    llm_client.chat.completions.create.assert_awaited_once()
+    llm_client.responses.create.assert_awaited_once()
 
 
 @pytest.mark.parametrize(
@@ -47,26 +43,8 @@ def test_get_recommendation_rejects_empty_content(
     content: str | None,
 ) -> None:
     # Arrange
-    llm_client.chat.completions.create.return_value = SimpleNamespace(
-        choices=[
-            SimpleNamespace(
-                message=SimpleNamespace(content=content),
-            ),
-        ],
-    )
-
-    # Act & Assert
-    with pytest.raises(EmptyLLMResponseError):
-        asyncio.run(travel_service.get_recommendation("Что посмотреть в Гонконге?"))
-
-
-def test_get_recommendation_rejects_empty_choices(
-    travel_service: TravelAssistantService,
-    llm_client: MagicMock,
-) -> None:
-    # Arrange
-    llm_client.chat.completions.create.return_value = SimpleNamespace(
-        choices=[],
+    llm_client.responses.create.return_value = SimpleNamespace(
+        output_text=content,
     )
 
     # Act & Assert
@@ -83,11 +61,11 @@ def test_get_recommendation_wraps_api_error(
         message="Service unavailable",
         request=Request(
             "POST",
-            "https://api.groq.com/openai/v1/chat/completions",
+            "https://api.groq.com/openai/v1/responses",
         ),
         body=None,
     )
-    llm_client.chat.completions.create.side_effect = api_error
+    llm_client.responses.create.side_effect = api_error
 
     # Act & Assert
     with pytest.raises(LLMRequestError) as exc_info:
@@ -116,14 +94,26 @@ def test_stream_recommendation_returns_chunks(
 ) -> None:
     # Arrange
     async def fake_stream():
-        yield SimpleNamespace(
-            choices=[SimpleNamespace(delta=SimpleNamespace(content="Посетите"))]
+        yield ResponseTextDeltaEvent(
+            content_index=0,
+            delta="Посетите",
+            item_id="item_1",
+            logprobs=[],
+            output_index=0,
+            sequence_number=1,
+            type="response.output_text.delta",
         )
-        yield SimpleNamespace(
-            choices=[SimpleNamespace(delta=SimpleNamespace(content=" Victoria Peak"))]
+        yield ResponseTextDeltaEvent(
+            content_index=0,
+            delta=" Victoria Peak",
+            item_id="item_1",
+            logprobs=[],
+            output_index=0,
+            sequence_number=2,
+            type="response.output_text.delta",
         )
 
-    llm_client.chat.completions.create.return_value = fake_stream()
+    llm_client.responses.create.return_value = fake_stream()
 
     async def collect_chunks() -> list[str]:
         chunks = []
@@ -143,7 +133,7 @@ def test_stream_recommendation_returns_chunks(
         "Посетите",
         " Victoria Peak",
     ]
-    llm_client.chat.completions.create.assert_awaited_once()
+    llm_client.responses.create.assert_awaited_once()
 
 
 def test_stream_recommendation_skips_empty_chunks(
@@ -152,18 +142,27 @@ def test_stream_recommendation_skips_empty_chunks(
 ) -> None:
     # Arrange
     async def fake_stream():
-        yield SimpleNamespace(choices=[])
-        yield SimpleNamespace(
-            choices=[SimpleNamespace(delta=SimpleNamespace(content=None))]
+        yield SimpleNamespace(type="response.created")
+        yield ResponseTextDeltaEvent(
+            content_index=0,
+            delta="",
+            item_id="item_1",
+            logprobs=[],
+            output_index=0,
+            sequence_number=1,
+            type="response.output_text.delta",
         )
-        yield SimpleNamespace(
-            choices=[SimpleNamespace(delta=SimpleNamespace(content=""))]
-        )
-        yield SimpleNamespace(
-            choices=[SimpleNamespace(delta=SimpleNamespace(content="Victoria Peak"))]
+        yield ResponseTextDeltaEvent(
+            content_index=0,
+            delta="Victoria Peak",
+            item_id="item_1",
+            logprobs=[],
+            output_index=0,
+            sequence_number=2,
+            type="response.output_text.delta",
         )
 
-    llm_client.chat.completions.create.return_value = fake_stream()
+    llm_client.responses.create.return_value = fake_stream()
 
     async def collect_chunks() -> list[str]:
         chunks = []
@@ -191,11 +190,11 @@ def test_stream_recommendation_wraps_api_error(
         message="Service unavailable",
         request=Request(
             "POST",
-            "https://api.groq.com/openai/v1/chat/completions",
+            "https://api.groq.com/openai/v1/responses",
         ),
         body=None,
     )
-    llm_client.chat.completions.create.side_effect = api_error
+    llm_client.responses.create.side_effect = api_error
 
     async def consume_stream() -> None:
         async for _ in travel_service.get_stream_recommendation(
@@ -208,3 +207,25 @@ def test_stream_recommendation_wraps_api_error(
         asyncio.run(consume_stream())
 
     assert exc_info.value.__cause__ is api_error
+
+
+def test_stream_recommendation_rejects_empty_stream(
+    travel_service: TravelAssistantService,
+    llm_client: MagicMock,
+) -> None:
+    # Arrange
+    async def fake_stream():
+        if False:
+            yield
+
+    llm_client.responses.create.return_value = fake_stream()
+
+    async def consume_stream() -> None:
+        async for _ in travel_service.get_stream_recommendation(
+            "Что посмотреть в Гонконге?"
+        ):
+            pass
+
+    # Act & Assert
+    with pytest.raises(EmptyLLMResponseError):
+        asyncio.run(consume_stream())

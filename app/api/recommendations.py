@@ -3,10 +3,7 @@ from collections.abc import AsyncIterator
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 
-from app.api.responses import (
-    STREAM_RECOMMENDATION_RESPONSES,
-    RECOMMENDATION_RESPONSES
-)
+from app.api.responses import STREAM_RECOMMENDATION_RESPONSES, RECOMMENDATION_RESPONSES
 from app.api.dependencies import get_travel_service
 from app.schemas.recommendation import (
     RecommendationResponse,
@@ -38,7 +35,11 @@ router = APIRouter(
 )
 
 
-@router.post("", response_model=RecommendationResponse, responses=RECOMMENDATION_RESPONSES,)
+@router.post(
+    "",
+    response_model=RecommendationResponse,
+    responses=RECOMMENDATION_RESPONSES,
+)
 async def get_recommendation(
     request: RecommendationRequest,
     service: TravelAssistantService = Depends(get_travel_service),
@@ -54,7 +55,11 @@ async def get_recommendation(
     return RecommendationResponse(answer=answer)
 
 
-@router.post("/stream",  response_class=StreamingResponse, responses=STREAM_RECOMMENDATION_RESPONSES)
+@router.post(
+    "/stream",
+    response_class=StreamingResponse,
+    responses=STREAM_RECOMMENDATION_RESPONSES,
+)
 async def get_stream_recommendation(
     request: RecommendationRequest,
     service: TravelAssistantService = Depends(get_travel_service),

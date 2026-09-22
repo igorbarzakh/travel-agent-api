@@ -1,16 +1,15 @@
 from collections.abc import AsyncIterator
 from typing import cast
 
-from openai import AsyncOpenAI, APIError, AsyncStream
-from openai.types.chat import (
-    ChatCompletionSystemMessageParam,
-    ChatCompletionUserMessageParam,
-    ChatCompletionChunk,
+from openai import APIError, AsyncOpenAI, AsyncStream
+from openai.types.responses import (
+    ResponseStreamEvent,
+    ResponseTextDeltaEvent,
 )
 
 from app.core.config import settings
-from app.core.prompts import TRAVEL_SYSTEM_PROMPT
 from app.core.exceptions import EmptyLLMResponseError, LLMRequestError
+from app.core.prompts import TRAVEL_SYSTEM_PROMPT
 
 
 class TravelAssistantService:
@@ -23,52 +22,29 @@ class TravelAssistantService:
 
     async def get_recommendation(self, query: str) -> str:
         try:
-            completion = await self._client.chat.completions.create(
+            response = await self._client.responses.create(
                 model=self._model,
-                messages=[
-                    ChatCompletionSystemMessageParam(
-                        role="system",
-                        content=TRAVEL_SYSTEM_PROMPT,
-                    ),
-                    ChatCompletionUserMessageParam(
-                        role="user",
-                        content=query,
-                    ),
-                ],
+                instructions=TRAVEL_SYSTEM_PROMPT,
+                input=query,
             )
-
         except APIError as error:
             raise LLMRequestError() from error
 
-        if not completion.choices:
-            raise EmptyLLMResponseError()
+        content = response.output_text
 
-        content = completion.choices[0].message.content
-
-        if content is None or not content.strip():
+        if not content or not content.strip():
             raise EmptyLLMResponseError()
 
         return content.strip()
 
-    async def close(self) -> None:
-        await self._client.close()
-
     async def get_stream_recommendation(self, query: str) -> AsyncIterator[str]:
         try:
             stream = cast(
-                AsyncStream[ChatCompletionChunk],
-                await self._client.chat.completions.create(
+                AsyncStream[ResponseStreamEvent],
+                await self._client.responses.create(
                     model=self._model,
-                    messages=[
-                        ChatCompletionSystemMessageParam(
-                            role="system",
-                            content=TRAVEL_SYSTEM_PROMPT,
-                        ),
-                        ChatCompletionUserMessageParam(
-                            role="user",
-                            content=query,
-                        ),
-                    ],
+                    instructions=TRAVEL_SYSTEM_PROMPT,
+                    input=query,
                     stream=True,
                 ),
             )
@@ -77,11 +53,11 @@ class TravelAssistantService:
 
         has_content = False
 
-        async for chunk in stream:
-            if not chunk.choices:
+        async for event in stream:
+            if not isinstance(event, ResponseTextDeltaEvent):
                 continue
 
-            content = chunk.choices[0].delta.content
+            content = event.delta
 
             if content:
                 if content.strip():
@@ -91,3 +67,6 @@ class TravelAssistantService:
 
         if not has_content:
             raise EmptyLLMResponseError()
+
+    async def close(self) -> None:
+        await self._client.close()
