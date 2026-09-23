@@ -7,6 +7,9 @@ from app.services.travel_assistant import TravelAssistantService
 from app.repositories.user import UserRepository
 from app.services.auth import AuthService
 from app.repositories.refresh_session import RefreshSessionRepository
+from app.repositories.conversation import ConversationRepository
+from app.repositories.message import MessageRepository
+from app.services.conversation import ConversationService
 
 
 @pytest.fixture
@@ -43,3 +46,31 @@ def auth_service(
 @pytest.fixture
 def refresh_session_repository() -> AsyncMock:
     return AsyncMock(spec=RefreshSessionRepository)
+
+
+@pytest.fixture
+def conversation_repository() -> AsyncMock:
+    return AsyncMock(spec=ConversationRepository)
+
+
+@pytest.fixture
+def message_repository() -> AsyncMock:
+    return AsyncMock(spec=MessageRepository)
+
+
+@pytest.fixture
+def conversation_service(
+    conversation_repository: AsyncMock,
+    message_repository: AsyncMock,
+    travel_service_mock: AsyncMock,
+) -> ConversationService:
+    return ConversationService(
+        conversation_repository,
+        message_repository,
+        travel_service_mock,
+    )
+
+
+@pytest.fixture
+def travel_service_mock() -> AsyncMock:
+    return AsyncMock(spec=TravelAssistantService)
