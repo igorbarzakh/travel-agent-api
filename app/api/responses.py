@@ -7,7 +7,7 @@ from app.core.messages import (
 from app.schemas.error import ErrorResponse
 
 
-RECOMMENDATION_RESPONSES = {
+LLM_ERROR_RESPONSES = {
     502: {
         "model": ErrorResponse,
         "description": "Failed to get a response from the LLM",
@@ -26,7 +26,7 @@ STREAM_RECOMMENDATION_RESPONSES = {
             },
         },
     },
-    **RECOMMENDATION_RESPONSES,
+    **LLM_ERROR_RESPONSES,
 }
 
 

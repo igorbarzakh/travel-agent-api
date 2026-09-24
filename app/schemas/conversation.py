@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Literal
 
 from pydantic import BaseModel, Field
 from app.core.types import MessageRole

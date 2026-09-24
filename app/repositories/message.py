@@ -1,6 +1,7 @@
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.models.conversation import Conversation
 from app.db.models.message import Message
 
 
@@ -21,6 +22,11 @@ class MessageRepository:
         )
 
         self._session.add(message)
+        await self._session.execute(
+            update(Conversation)
+            .where(Conversation.id == conversation_id)
+            .values(updated_at=func.now())
+        )
         await self._session.commit()
         await self._session.refresh(message)
 

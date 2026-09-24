@@ -4,8 +4,16 @@ from unittest.mock import AsyncMock
 from fastapi.testclient import TestClient
 
 from app.core.error_codes import ErrorCode
-from app.core.exceptions import ConversationNotFoundError
-from app.core.messages import CONVERSATION_NOT_FOUND_ERROR_MESSAGE
+from app.core.exceptions import (
+    ConversationNotFoundError,
+    EmptyLLMResponseError,
+    LLMRequestError,
+)
+from app.core.messages import (
+    CONVERSATION_NOT_FOUND_ERROR_MESSAGE,
+    EMPTY_LLM_RESPONSE_ERROR_MESSAGE,
+    LLM_REQUEST_ERROR_MESSAGE,
+)
 from app.db.models.user import User
 from app.schemas.conversation import (
     MessagePageResponse,
@@ -50,6 +58,52 @@ def test_send_message_returns_assistant_message(
     assert response_data["conversation_id"] == 1
     assert response_data["role"] == "assistant"
     assert response_data["content"] == "Можно рассмотреть Японию."
+
+
+def test_send_message_returns_502_on_llm_error(
+    client: TestClient,
+    conversation_service_mock: AsyncMock,
+) -> None:
+    # Arrange
+    conversation_service_mock.send_message.side_effect = LLMRequestError()
+
+    # Act
+    response = client.post(
+        "/conversations/1/messages",
+        json={"content": "Куда поехать?"},
+    )
+
+    # Assert
+    assert response.status_code == 502
+    assert response.json() == {
+        "detail": {
+            "code": ErrorCode.LLM_REQUEST_FAILED,
+            "message": LLM_REQUEST_ERROR_MESSAGE,
+        }
+    }
+
+
+def test_send_message_returns_502_on_empty_llm_response(
+    client: TestClient,
+    conversation_service_mock: AsyncMock,
+) -> None:
+    # Arrange
+    conversation_service_mock.send_message.side_effect = EmptyLLMResponseError()
+
+    # Act
+    response = client.post(
+        "/conversations/1/messages",
+        json={"content": "Куда поехать?"},
+    )
+
+    # Assert
+    assert response.status_code == 502
+    assert response.json() == {
+        "detail": {
+            "code": ErrorCode.EMPTY_LLM_RESPONSE,
+            "message": EMPTY_LLM_RESPONSE_ERROR_MESSAGE,
+        }
+    }
 
 
 def test_send_message_returns_404_for_unknown_conversation(

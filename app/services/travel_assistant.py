@@ -63,22 +63,21 @@ class TravelAssistantService:
                     stream=True,
                 ),
             )
+            has_content = False
+
+            async for event in stream:
+                if not isinstance(event, ResponseTextDeltaEvent):
+                    continue
+
+                content = event.delta
+
+                if content:
+                    if content.strip():
+                        has_content = True
+
+                    yield content
         except APIError as error:
             raise LLMRequestError() from error
-
-        has_content = False
-
-        async for event in stream:
-            if not isinstance(event, ResponseTextDeltaEvent):
-                continue
-
-            content = event.delta
-
-            if content:
-                if content.strip():
-                    has_content = True
-
-                yield content
 
         if not has_content:
             raise EmptyLLMResponseError()

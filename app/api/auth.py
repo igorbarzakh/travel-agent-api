@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Response, Cookie
+from fastapi import APIRouter, Depends, HTTPException, status, Response
 
 from app.api.dependencies import get_auth_service, get_refresh_token
 from app.core.config import settings
@@ -91,7 +91,7 @@ async def login(
         value=refresh_token,
         httponly=True,
         secure=settings.cookie_secure,
-        samesite=settings.cookie_samesite,
+        samesite=settings.cookie_same_site,
         path="/auth",
         max_age=settings.refresh_token_expire_days * 24 * 60 * 60,
     )

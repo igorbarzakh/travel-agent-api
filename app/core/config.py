@@ -47,7 +47,7 @@ class Settings(BaseSettings):
         default=False,
     )
 
-    cookie_samesite: str = Field(
+    cookie_same_site: str = Field(
         validation_alias="COOKIE_SAMESITE",
         default="lax",
     )

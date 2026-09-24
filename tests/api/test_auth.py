@@ -1,7 +1,10 @@
-from unittest.mock import AsyncMock
+from http.cookies import SimpleCookie
+from unittest.mock import AsyncMock, patch
 
+import pytest
 from starlette.testclient import TestClient
 
+from app.core.config import settings
 from app.core.error_codes import ErrorCode
 from app.core.exceptions import (
     InvalidCredentialsError,
@@ -15,7 +18,6 @@ from app.core.messages import (
     USER_ALREADY_EXISTS_ERROR_MESSAGE,
 )
 from app.db.models.user import User
-from app.core.config import settings
 
 
 def test_register_returns_created_user(
@@ -44,6 +46,7 @@ def test_register_returns_created_user(
         "id": 1,
         "email": "user@example.com",
     }
+    auth_service_mock.register.assert_awaited_once_with("user@example.com", "secret123")
 
 
 def test_register_returns_409_for_existing_user(
@@ -70,26 +73,45 @@ def test_register_returns_409_for_existing_user(
             "message": USER_ALREADY_EXISTS_ERROR_MESSAGE,
         }
     }
+    auth_service_mock.register.assert_awaited_once_with("user@example.com", "secret123")
 
 
+@pytest.mark.parametrize(
+    ("secure", "same_site", "expire_days", "max_age"),
+    [
+        (False, "lax", 7, "604800"),
+        (True, "strict", 2, "172800"),
+        (True, "none", 1, "86400"),
+    ],
+    ids=["lax-without-secure", "strict-with-secure", "none-with-secure"],
+)
 def test_login_returns_access_token_and_sets_refresh_cookie(
     client: TestClient,
     auth_service_mock: AsyncMock,
+    secure: bool,
+    same_site: str,
+    expire_days: int,
+    max_age: str,
 ) -> None:
     # Arrange
+    test_settings = settings.model_copy()
+    test_settings.cookie_secure = secure
+    test_settings.cookie_same_site = same_site
+    test_settings.refresh_token_expire_days = expire_days
     auth_service_mock.login.return_value = (
         "access-token",
         "refresh-token",
     )
 
     # Act
-    response = client.post(
-        "/auth/login",
-        json={
-            "email": "user@example.com",
-            "password": "secret123",
-        },
-    )
+    with patch("app.api.auth.settings", test_settings):
+        response = client.post(
+            "/auth/login",
+            json={
+                "email": "user@example.com",
+                "password": "secret123",
+            },
+        )
 
     # Assert
     assert response.status_code == 200
@@ -97,16 +119,20 @@ def test_login_returns_access_token_and_sets_refresh_cookie(
         "access_token": "access-token",
         "token_type": "bearer",
     }
+    auth_service_mock.login.assert_awaited_once_with("user@example.com", "secret123")
 
     assert response.cookies.get(settings.refresh_cookie_name) == "refresh-token"
 
-    set_cookie = response.headers["set-cookie"]
+    cookies = SimpleCookie()
+    cookies.load(response.headers["set-cookie"])
+    refresh_cookie = cookies[settings.refresh_cookie_name]
 
-    assert f"{settings.refresh_cookie_name}=refresh-token" in set_cookie
-    assert "HttpOnly" in set_cookie
-    assert "SameSite=lax" in set_cookie
-    assert "Path=/auth" in set_cookie
-    assert "Max-Age=" in set_cookie
+    assert refresh_cookie.value == "refresh-token"
+    assert refresh_cookie["httponly"] is True
+    assert bool(refresh_cookie["secure"]) is secure
+    assert f"SameSite={same_site}" in response.headers["set-cookie"].split("; ")
+    assert refresh_cookie["path"] == "/auth"
+    assert refresh_cookie["max-age"] == max_age
 
 
 def test_login_returns_401_for_invalid_credentials(
@@ -133,6 +159,9 @@ def test_login_returns_401_for_invalid_credentials(
             "message": INVALID_CREDENTIALS_ERROR_MESSAGE,
         }
     }
+    auth_service_mock.login.assert_awaited_once_with(
+        "user@example.com", "wrong-password"
+    )
 
 
 def test_refresh_returns_new_access_token(

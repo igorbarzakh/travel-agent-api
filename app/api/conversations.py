@@ -4,8 +4,13 @@ from app.api.dependencies import (
     get_conversation_service,
     get_current_user,
 )
+from app.api.responses import LLM_ERROR_RESPONSES
 from app.core.error_codes import ErrorCode
-from app.core.exceptions import ConversationNotFoundError
+from app.core.exceptions import (
+    ConversationNotFoundError,
+    EmptyLLMResponseError,
+    LLMRequestError,
+)
 from app.db.models.user import User
 from app.schemas.conversation import (
     ConversationCreateRequest,
@@ -85,6 +90,7 @@ async def get_messages(
     "/{conversation_id}/messages",
     response_model=MessageResponse,
     status_code=status.HTTP_201_CREATED,
+    responses=LLM_ERROR_RESPONSES,
 )
 async def send_message(
     conversation_id: int,
@@ -103,6 +109,18 @@ async def send_message(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=ErrorDetail(
                 code=ErrorCode.CONVERSATION_NOT_FOUND,
+                message=str(error),
+            ).model_dump(),
+        ) from error
+    except (EmptyLLMResponseError, LLMRequestError) as error:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=ErrorDetail(
+                code=(
+                    ErrorCode.EMPTY_LLM_RESPONSE
+                    if isinstance(error, EmptyLLMResponseError)
+                    else ErrorCode.LLM_REQUEST_FAILED
+                ),
                 message=str(error),
             ).model_dump(),
         ) from error

@@ -157,6 +157,37 @@ def test_stream_recommendation_returns_error_event(
     assert response.text == f"event: error\ndata: {error_data.model_dump_json()}\n\n"
 
 
+def test_stream_recommendation_returns_error_after_partial_text(
+    client: TestClient,
+    travel_service_mock: AsyncMock,
+) -> None:
+    # Arrange
+    async def fake_stream():
+        yield "Посетите"
+        raise LLMRequestError()
+
+    travel_service_mock.get_stream_recommendation.return_value = fake_stream()
+    error_data = ErrorDetail(
+        code=ErrorCode.LLM_REQUEST_FAILED,
+        message=LLM_REQUEST_ERROR_MESSAGE,
+    )
+
+    # Act
+    response = client.post(
+        "/recommendations/stream",
+        json={"query": "Что посмотреть в Гонконге?"},
+    )
+
+    # Assert
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert response.text == (
+        "event: message\n"
+        'data: {"text":"Посетите"}\n\n'
+        f"event: error\ndata: {error_data.model_dump_json()}\n\n"
+    )
+
+
 def test_stream_recommendation_rejects_empty_query(
     client: TestClient, travel_service_mock: AsyncMock
 ) -> None:

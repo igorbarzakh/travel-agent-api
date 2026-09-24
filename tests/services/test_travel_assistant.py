@@ -222,6 +222,49 @@ def test_stream_recommendation_wraps_api_error(
     assert exc_info.value.__cause__ is api_error
 
 
+@pytest.mark.parametrize("emit_chunk", [False, True], ids=["before-text", "after-text"])
+def test_stream_recommendation_wraps_api_error_during_iteration(
+    travel_service: TravelAssistantService,
+    llm_client: MagicMock,
+    emit_chunk: bool,
+) -> None:
+    # Arrange
+    api_error = APIError(
+        message="Stream interrupted",
+        request=Request("POST", "https://api.groq.com/openai/v1/responses"),
+        body=None,
+    )
+
+    async def fake_stream():
+        if emit_chunk:
+            yield ResponseTextDeltaEvent(
+                content_index=0,
+                delta="Посетите",
+                item_id="item_1",
+                logprobs=[],
+                output_index=0,
+                sequence_number=1,
+                type="response.output_text.delta",
+            )
+        raise api_error
+
+    llm_client.responses.create.return_value = fake_stream()
+    chunks = []
+
+    async def consume_stream() -> None:
+        async for chunk in travel_service.get_stream_recommendation(
+            "Что посмотреть в Гонконге?", []
+        ):
+            chunks.append(chunk)
+
+    # Act & Assert
+    with pytest.raises(LLMRequestError) as exc_info:
+        asyncio.run(consume_stream())
+
+    assert exc_info.value.__cause__ is api_error
+    assert chunks == (["Посетите"] if emit_chunk else [])
+
+
 def test_stream_recommendation_rejects_empty_stream(
     travel_service: TravelAssistantService,
     llm_client: MagicMock,
