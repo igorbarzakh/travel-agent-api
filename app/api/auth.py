@@ -1,16 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Response, Cookie
 
-from app.api.dependencies import get_auth_service
+from app.api.dependencies import get_auth_service, get_refresh_token
+from app.core.config import settings
 from app.core.exceptions import (
     InvalidCredentialsError,
     InvalidRefreshTokenError,
     UserAlreadyExistsError,
 )
+
 from app.schemas.auth import (
     AuthResponse,
     LoginRequest,
-    LogoutRequest,
-    RefreshRequest,
     RefreshResponse,
     RegisterRequest,
     RegisterResponse,
@@ -69,6 +69,7 @@ async def register(
 )
 async def login(
     request: LoginRequest,
+    response: Response,
     service: AuthService = Depends(get_auth_service),
 ) -> AuthResponse:
     try:
@@ -85,19 +86,32 @@ async def login(
             ).model_dump(),
         ) from error
 
+    response.set_cookie(
+        key=settings.refresh_cookie_name,
+        value=refresh_token,
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite=settings.cookie_samesite,
+        path="/auth",
+        max_age=settings.refresh_token_expire_days * 24 * 60 * 60,
+    )
+
     return AuthResponse(
         access_token=access_token,
-        refresh_token=refresh_token,
     )
 
 
-@router.post("/refresh", response_model=RefreshResponse, responses=REFRESH_RESPONSES)
+@router.post(
+    "/refresh",
+    response_model=RefreshResponse,
+    responses=REFRESH_RESPONSES,
+)
 async def refresh(
-    request: RefreshRequest,
+    refresh_token: str = Depends(get_refresh_token),
     service: AuthService = Depends(get_auth_service),
 ) -> RefreshResponse:
     try:
-        access_token = await service.refresh(request.refresh_token)
+        access_token = await service.refresh(refresh_token)
     except InvalidRefreshTokenError as error:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -113,14 +127,17 @@ async def refresh(
 
 
 @router.post(
-    "/logout", status_code=status.HTTP_204_NO_CONTENT, responses=LOGOUT_RESPONSES
+    "/logout",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=LOGOUT_RESPONSES,
 )
 async def logout(
-    request: LogoutRequest,
+    response: Response,
+    refresh_token: str = Depends(get_refresh_token),
     service: AuthService = Depends(get_auth_service),
 ) -> None:
     try:
-        await service.logout(request.refresh_token)
+        await service.logout(refresh_token)
     except InvalidRefreshTokenError as error:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -129,3 +146,8 @@ async def logout(
                 message=str(error),
             ).model_dump(),
         ) from error
+
+    response.delete_cookie(
+        key=settings.refresh_cookie_name,
+        path="/auth",
+    )

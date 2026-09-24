@@ -13,7 +13,6 @@ class LoginRequest(BaseModel):
 
 class AuthResponse(BaseModel):
     access_token: str
-    refresh_token: str
     token_type: str = "bearer"
 
 
@@ -22,14 +21,6 @@ class RegisterResponse(BaseModel):
     email: EmailStr
 
 
-class RefreshRequest(BaseModel):
-    refresh_token: str
-
-
 class RefreshResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
-
-
-class LogoutRequest(BaseModel):
-    refresh_token: str

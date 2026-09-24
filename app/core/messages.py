@@ -8,3 +8,5 @@ INVALID_ACCESS_TOKEN_ERROR_MESSAGE = "Invalid access token"
 
 INTERNAL_SERVER_ERROR_MESSAGE = "Internal server error"
 CONVERSATION_NOT_FOUND_ERROR_MESSAGE = "Conversation not found"
+
+MISSING_REFRESH_TOKEN_ERROR_MESSAGE = "Refresh token is missing"

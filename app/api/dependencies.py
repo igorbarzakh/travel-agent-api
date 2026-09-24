@@ -1,5 +1,5 @@
 import jwt
-from fastapi import Depends, HTTPException, status, Request
+from fastapi import Depends, HTTPException, status, Request, Cookie
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,8 +16,12 @@ from app.core.security import decode_access_token
 from app.db.models.user import User
 
 from app.core.error_codes import ErrorCode
-from app.core.messages import INVALID_ACCESS_TOKEN_ERROR_MESSAGE
+from app.core.messages import (
+    INVALID_ACCESS_TOKEN_ERROR_MESSAGE,
+    MISSING_REFRESH_TOKEN_ERROR_MESSAGE,
+)
 from app.schemas.error import ErrorDetail
+from app.core.config import settings
 
 
 bearer_scheme = HTTPBearer()
@@ -79,3 +83,21 @@ async def get_current_user(
         raise _invalid_access_token_exception()
 
     return user
+
+
+def get_refresh_token(
+    refresh_token: str | None = Cookie(
+        default=None,
+        alias=settings.refresh_cookie_name,
+    ),
+) -> str:
+    if refresh_token is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=ErrorDetail(
+                code=ErrorCode.MISSING_REFRESH_TOKEN,
+                message=MISSING_REFRESH_TOKEN_ERROR_MESSAGE,
+            ).model_dump(),
+        )
+
+    return refresh_token
